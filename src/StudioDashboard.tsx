@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FolderPlus, Eye, X as Close } from 'lucide-react';
 import { writeTextFile, BaseDirectory, mkdir, exists, readDir, copyFile } from '@tauri-apps/plugin-fs';
 import { resolveResource } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/core';
 
 /* ──────────────────────────────────────────────────────────
    Utilities & Types
@@ -30,6 +31,9 @@ interface Project {
   description?: string;
   intention?: string;
   postRecipe?: string[];
+  // Add fields from Rust struct
+  name?: string;
+  path?: string;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -670,98 +674,8 @@ function PublicSitePreview({
    MAIN – Studio Dashboard
 ────────────────────────────────────────────────────────── */
 export default function StudioDashboard() {
-  const initProjects = (): Project[] => {
-    const labels = ['Alchemy', 'Garden', 'Codex'];
-    const radius = 160;
-
-    const projectData = {
-      Alchemy: [
-        {
-          id: 'alchemy-1',
-          title: 'Introduction to Digital Transformation',
-          body: "# Digital Transformation in Modern Business\n\nThe landscape of business is rapidly evolving with digital technologies at the forefront. Companies that embrace digital transformation are seeing significant improvements in efficiency, customer satisfaction, and competitive advantage.\n\n## Key Areas of Focus\n\n- **Automation**: Streamlining repetitive tasks\n- **Data Analytics**: Making informed decisions\n- **Cloud Migration**: Scaling infrastructure\n- **Customer Experience**: Enhancing touchpoints\n\nThis transformation isn't just about technology—it's about reimagining how we work.",
-        },
-        {
-          id: 'alchemy-2',
-          title: 'The Art of Problem Solving',
-          body: '# Creative Problem Solving Methods\n\nEvery challenge presents an opportunity for innovation. Here are some proven methodologies for approaching complex problems:\n\n## Design Thinking Process\n\n1. **Empathize** - Understand the user\n2. **Define** - Frame the problem\n3. **Ideate** - Generate solutions\n4. **Prototype** - Build to think\n5. **Test** - Learn and iterate\n\n> "The best way to have a good idea is to have lots of ideas." - Linus Pauling',
-        },
-        {
-          id: 'alchemy-3',
-          title: 'Building Sustainable Systems',
-          body: '# Creating Systems That Last\n\nSustainability in system design goes beyond environmental concerns—it encompasses maintainability, scalability, and long-term viability.\n\n## Core Principles\n\n- **Modularity**: Build in discrete, replaceable components\n- **Documentation**: Keep knowledge accessible\n- **Testing**: Ensure reliability through automated checks\n- **Monitoring**: Track performance and health\n\nA well-designed system should be able to evolve and adapt over time.',
-        },
-        {
-          id: 'alchemy-4',
-          title: 'Innovation in Practice',
-          body: "# Turning Ideas into Reality\n\nInnovation isn't just about having great ideas—it's about executing them effectively. Here's how successful organizations approach innovation:\n\n## The Innovation Pipeline\n\n1. **Idea Generation** - Create a culture of curiosity\n2. **Evaluation** - Assess feasibility and impact\n3. **Experimentation** - Test with minimal viable products\n4. **Implementation** - Scale successful experiments\n\nThe key is to fail fast and learn faster.",
-        },
-      ],
-      Garden: [
-        {
-          id: 'garden-1',
-          title: 'Cultivating Creative Spaces',
-          body: '# Designing Environments for Creativity\n\nPhysical and digital spaces have a profound impact on our ability to think creatively and collaborate effectively.\n\n## Elements of Creative Spaces\n\n- **Natural Light**: Enhances mood and energy\n- **Flexible Furniture**: Adapts to different work styles\n- **Quiet Zones**: For focused, deep work\n- **Collaboration Areas**: For team brainstorming\n- **Nature Elements**: Plants and natural materials\n\nThe goal is to create an environment that inspires and energizes.',
-        },
-        {
-          id: 'garden-2',
-          title: 'Growing Ideas from Seeds',
-          body: "# The Lifecycle of an Idea\n\nGreat ideas don't emerge fully formed—they grow and evolve through careful nurturing and cultivation.\n\n## Stages of Idea Development\n\n1. **Seed Stage** - Initial spark of inspiration\n2. **Germination** - Early exploration and research\n3. **Growth** - Development and refinement\n4. **Flowering** - Implementation and testing\n5. **Harvest** - Launch and scaling\n\nLike gardening, idea cultivation requires patience, care, and the right conditions.",
-        },
-        {
-          id: 'garden-3',
-          title: 'Community and Collaboration',
-          body: '# Building Thriving Communities\n\nStrong communities don\'t happen by accident—they require intentional design and ongoing cultivation.\n\n## Community Building Principles\n\n- **Shared Purpose**: Clear mission and values\n- **Trust**: Safe spaces for vulnerability\n- **Diversity**: Different perspectives and backgrounds\n- **Participation**: Active engagement from members\n- **Evolution**: Ability to adapt and grow\n\n> "Alone we can do so little; together we can do so much." - Helen Keller',
-        },
-        {
-          id: 'garden-4',
-          title: 'Sustainable Growth Strategies',
-          body: '# Growing Without Burning Out\n\nSustainable growth focuses on long-term health rather than short-term gains. This applies to businesses, communities, and personal development.\n\n## Key Strategies\n\n- **Organic Expansion**: Growth that feels natural\n- **Resource Management**: Careful allocation of time and energy\n- **Quality over Quantity**: Depth rather than breadth\n- **Regular Rest**: Periods of recovery and reflection\n\nThe most resilient systems are those that prioritize sustainability over speed.',
-        },
-      ],
-      Codex: [
-        {
-          id: 'codex-1',
-          title: 'The Philosophy of Code',
-          body: "# Code as Craft and Communication\n\nWriting code is both an art and a science. It's about solving problems elegantly while communicating clearly with both machines and other humans.\n\n## Principles of Good Code\n\n- **Clarity**: Code should read like well-written prose\n- **Simplicity**: Prefer simple solutions over clever ones\n- **Consistency**: Follow established patterns and conventions\n- **Testability**: Write code that can be easily verified\n- **Maintainability**: Consider the future developer (often yourself)\n\n```javascript\n// Good code tells a story\nfunction calculateMonthlyPayment(principal, rate, years) {\n  const monthlyRate = rate / 12;\n  const numberOfPayments = years * 12;\n  return principal * (monthlyRate * Math.pow(1 + monthlyRate, numberOfPayments)) / \n         (Math.pow(1 + monthlyRate, numberOfPayments) - 1);\n}\n```",
-        },
-        {
-          id: 'codex-2',
-          title: 'Architecture and Design Patterns',
-          body: '# Building Scalable Software Architecture\n\nSoftware architecture is the foundation upon which applications are built. Good architecture decisions made early can save countless hours later.\n\n## Common Design Patterns\n\n### MVC (Model-View-Controller)\nSeparates data, presentation, and business logic for better organization.\n\n### Observer Pattern\nAllows objects to subscribe to and receive notifications about changes.\n\n### Factory Pattern\nCreates objects without specifying their exact classes.\n\n## Architecture Principles\n\n- **Separation of Concerns**: Each component has a single responsibility\n- **Loose Coupling**: Components depend on abstractions, not concretions\n- **High Cohesion**: Related functionality is grouped together\n\nRemember: Architecture is about trade-offs, not perfect solutions.',
-        },
-        {
-          id: 'codex-3',
-          title: 'Testing and Quality Assurance',
-          body: "# Building Confidence Through Testing\n\nTesting isn't just about finding bugs—it's about building confidence in your code and enabling safe refactoring.\n\n## Testing Pyramid\n\n1. **Unit Tests** (Base) - Test individual functions/methods\n2. **Integration Tests** (Middle) - Test component interactions\n3. **E2E Tests** (Top) - Test complete user workflows\n\n## Best Practices\n\n- **Test-Driven Development**: Write tests before implementation\n- **Meaningful Test Names**: Describe what the test verifies\n- **Single Assertion**: Each test should verify one thing\n- **Independent Tests**: Tests shouldn't depend on each other\n\n```javascript\ndescribe('calculateMonthlyPayment', () => {\n  it('should calculate correct payment for standard 30-year mortgage', () => {\n    const payment = calculateMonthlyPayment(100000, 0.05, 30);\n    expect(payment).toBeCloseTo(536.82, 2);\n  });\n});\n```",
-        },
-        {
-          id: 'codex-4',
-          title: 'Performance and Optimization',
-          body: '# Writing Efficient Code\n\nPremature optimization is the root of all evil, but understanding performance principles helps you make better decisions from the start.\n\n## Performance Principles\n\n### Time Complexity\n- **O(1)** - Constant time (hash lookups)\n- **O(log n)** - Logarithmic (binary search)\n- **O(n)** - Linear (simple loops)\n- **O(n²)** - Quadratic (nested loops)\n\n### Space Complexity\nConsider memory usage alongside execution time.\n\n## Optimization Strategies\n\n1. **Measure First**: Profile before optimizing\n2. **Focus on Bottlenecks**: 80/20 rule applies\n3. **Cache Intelligently**: Store expensive computations\n4. **Lazy Loading**: Load resources when needed\n\n> "Make it work, make it right, make it fast." - Kent Beck',
-        },
-        {
-          id: 'codex-5',
-          title: 'Developer Experience and Tooling',
-          body: "# Creating Delightful Development Workflows\n\nGood developer experience isn't a luxury—it's essential for productivity and job satisfaction.\n\n## Essential Development Tools\n\n### Code Editors\n- Syntax highlighting and autocomplete\n- Integrated debugging capabilities\n- Extension ecosystems\n\n### Version Control\n- Git for tracking changes\n- Meaningful commit messages\n- Branching strategies (Git Flow, GitHub Flow)\n\n### Automation\n- Continuous Integration/Deployment\n- Automated testing and linting\n- Code formatting (Prettier, ESLint)\n\n## Creating Good DX\n\n- **Fast Feedback Loops**: Quick builds and tests\n- **Clear Documentation**: README files and inline comments\n- **Consistent Environments**: Docker, dev containers\n- **Error Messages**: Helpful and actionable\n\nInvest in your tools—they're your daily companions.",
-        },
-      ],
-    };
-
-    return labels.map((label, idx) => {
-      const { x, y } = polar(radius, (360 / labels.length) * idx);
-      return {
-        id: label,
-        label,
-        x,
-        y,
-        posts: projectData[label as keyof typeof projectData] || [
-          { id: `${label}-1`, title: 'Default Post', body: 'Default content' },
-        ],
-      };
-    });
-  };
-  const [projects, setProjects] = useState<Project[]>(initProjects);
+  // State for projects - now loaded dynamically
+  const [projects, setProjects] = useState<Project[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [openProj, setOpenProj] = useState<{ project: Project; position?: { x: number; y: number } } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -980,9 +894,79 @@ import Layout from '../layouts/Layout.astro';
     }
   };
 
-  // Auto-initialize studio on first launch
+  // Load projects from file system
+  const loadProjects = async () => {
+    try {
+      const projectList = await invoke<Array<{ name: string; path: string }>>('list_projects');
+
+      // Convert file system projects to UI projects with positions
+      const uiProjects: Project[] = projectList.map((proj, idx) => {
+        const radius = 160;
+        const { x, y } = polar(radius, (360 / projectList.length) * idx);
+
+        return {
+          id: proj.name,
+          label: proj.name,
+          name: proj.name,
+          path: proj.path,
+          x,
+          y,
+          posts: [{ id: `${proj.name}-1`, title: 'Welcome', body: 'Welcome to your project!' }],
+        };
+      });
+
+      setProjects(uiProjects);
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
+  };
+
+  // Create a new project
+  const createNewProject = async () => {
+    console.log('createNewProject called!');
+
+    // Generate a unique "untitled" name
+    const generateUntitledName = () => {
+      const baseName = 'untitled';
+      const existingNames = projects.map((p) => p.name || p.label);
+
+      if (!existingNames.includes(baseName)) {
+        return baseName;
+      }
+
+      let counter = 1;
+      while (existingNames.includes(`${baseName}-${counter}`)) {
+        counter++;
+      }
+      return `${baseName}-${counter}`;
+    };
+
+    const name = generateUntitledName();
+    console.log('Creating project with name:', name);
+
+    try {
+      const newProject = await invoke<{ name: string; path: string }>('create_project', { name });
+      console.log('Project created successfully:', newProject);
+
+      // Reload projects to update the UI
+      await loadProjects();
+
+      // No alert - just create silently for better UX
+      console.log(`✅ Project '${newProject.name}' created at: ${newProject.path}`);
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      // Still show error alerts
+      alert(`❌ Failed to create project: ${error}`);
+    }
+  };
+
+  // Auto-initialize studio and load projects on first launch
   useEffect(() => {
-    initializeStudio();
+    const initAndLoad = async () => {
+      await initializeStudio();
+      await loadProjects();
+    };
+    initAndLoad();
   }, []);
 
   useEffect(() => {
@@ -997,10 +981,8 @@ import Layout from '../layouts/Layout.astro';
   }, [projects]);
 
   const addProject = () => {
-    const label = `Project ${projects.length + 1}`;
-    const { x, y } = polar(160, (360 / (projects.length + 1)) * projects.length);
-    const newProj: Project = { id: label, label, x, y, posts: [{ id: `${label}-1`, title: 'Post 1' }] };
-    setProjects((prev) => [...prev, newProj]);
+    console.log('addProject called!');
+    createNewProject();
   };
 
   const updatePos = (id: string, x: number, y: number) => {
@@ -1018,13 +1000,6 @@ import Layout from '../layouts/Layout.astro';
 
   return (
     <div className="relative flex min-h-screen items-center justify-center text-neutral-50 selection:bg-neutral-700">
-      {/* Initialize Studio Button */}
-      <button
-        onClick={initializeStudio}
-        className="fixed top-4 left-4 z-50 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg shadow-lg transition-colors"
-      >
-        Initialize Studio
-      </button>
       <div ref={containerRef} className="relative h-[28rem] w-[28rem] select-none">
         <div className="absolute top-1/2 left-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/5 shadow-inner backdrop-blur-sm pointer-events-none">
           <motion.span layoutId="avatar" className="text-sm opacity-60">
