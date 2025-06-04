@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FolderPlus, Eye, X as Close } from 'lucide-react';
-import { writeTextFile, BaseDirectory, mkdir, exists } from '@tauri-apps/plugin-fs';
+import { writeTextFile, BaseDirectory, mkdir, exists, readDir, copyFile } from '@tauri-apps/plugin-fs';
+import { resolveResource } from '@tauri-apps/api/path';
 
 /* ──────────────────────────────────────────────────────────
    Utilities & Types
@@ -766,81 +767,223 @@ export default function StudioDashboard() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // File system test function - handles iCloud Documents
-  const testFileSystem = async () => {
+  // First launch handler - sets up studio workspace
+  const initializeStudio = async () => {
     try {
-      // Try multiple approaches for macOS Documents folder
-      const strategies = [
-        // Strategy 1: Use BaseDirectory.Document (standard approach)
-        async () => {
-          await mkdir('studio', { baseDir: BaseDirectory.Document, recursive: true });
-          return { baseDir: BaseDirectory.Document, path: 'studio/test.md', location: 'Documents (BaseDirectory)' };
-        },
+      console.log('Checking studio workspace...');
 
-        // Strategy 2: Use Home directory + Documents (bypass iCloud issues)
-        async () => {
-          // Note: This might require different permissions
-          await mkdir('Documents/studio', { baseDir: BaseDirectory.Home, recursive: true });
-          return { baseDir: BaseDirectory.Home, path: 'Documents/studio/test.md', location: 'Home/Documents' };
-        },
+      // Define the canonical studio location: ~/Documents/studio/
+      const STUDIO_PATH = 'studio';
+      const STUDIO_BASE = BaseDirectory.Document;
 
-        // Strategy 3: Use Desktop as fallback (usually works better with iCloud)
-        async () => {
-          await mkdir('studio', { baseDir: BaseDirectory.Desktop, recursive: true });
-          return { baseDir: BaseDirectory.Desktop, path: 'studio/test.md', location: 'Desktop' };
-        },
-      ];
-
-      let lastError = null;
-
-      for (let i = 0; i < strategies.length; i++) {
-        try {
-          console.log(`Trying file system strategy ${i + 1}...`);
-          const result = await strategies[i]();
-
-          // Create a test file
-          const testContent = `# Studio Test File
-Created at: ${new Date().toISOString()}
-Strategy: ${result.location}
-Path: ${result.path}
-
-This file was created to test Tauri's file system access on macOS.
-
-## System Info
-- Strategy used: ${i + 1}/${strategies.length}
-- Location: ${result.location}
-- iCloud Documents might be: ${result.location.includes('BaseDirectory') ? 'enabled' : 'bypassed'}
-`;
-
-          await writeTextFile(result.path, testContent, { baseDir: result.baseDir });
-
-          alert(
-            `✅ File system test successful!\n\nCreated: ${result.path}\nLocation: ${result.location}\nStrategy: ${
-              i + 1
-            }/${strategies.length}`
-          );
-          return; // Success, exit function
-        } catch (error) {
-          console.warn(`Strategy ${i + 1} failed:`, error);
-          lastError = error;
-          continue; // Try next strategy
-        }
+      // Check if studio directory already exists
+      let studioExists = false;
+      try {
+        await readDir(STUDIO_PATH, { baseDir: STUDIO_BASE });
+        studioExists = true;
+        console.log('Studio workspace already exists - respecting user setup');
+      } catch {
+        console.log('Studio workspace not found - will create new one');
       }
 
-      // If we get here, all strategies failed
-      throw lastError;
+      if (!studioExists) {
+        // Create the studio directory
+        await mkdir(STUDIO_PATH, { baseDir: STUDIO_BASE, recursive: true });
+        console.log('Created studio directory');
+
+        // Create starter site files
+        await createStarterSite();
+
+        alert(
+          `🎉 Welcome to Studio Builder Desktop!\n\nYour new Astro workspace has been created at:\n~/Documents/studio/\n\nTo get started:\n1. Open a terminal in that folder\n2. Run: npm install && npm run dev\n3. Open http://localhost:4321 in your browser`
+        );
+      } else {
+        alert(`✅ Studio workspace found!\n\nLocation: ~/Documents/studio/\n\nYour existing setup has been preserved.`);
+      }
     } catch (error) {
-      console.error('All file system strategies failed:', error);
-
-      let errorMessage = `❌ File system test failed: ${error}`;
-
-      if (error.toString().includes('forbidden')) {
-        errorMessage += `\n\n💡 This might be due to:\n• iCloud Documents & Desktop sync\n• macOS security permissions\n• Tauri capability configuration\n\nTry:\n1. Disable iCloud for Documents\n2. Grant file access permissions\n3. Check Tauri capabilities`;
-      }
-
-      alert(errorMessage);
+      console.error('Studio initialization failed:', error);
+      alert(`❌ Failed to initialize studio workspace: ${error}\n\nPlease check file permissions and try again.`);
     }
   };
+
+  // Create the starter Astro site
+  const createStarterSite = async () => {
+    try {
+      console.log('Creating starter site...');
+
+      // Create directory structure
+      const dirs = ['src', 'src/layouts', 'src/pages', 'src/components', 'public'];
+      for (const dir of dirs) {
+        await mkdir(`studio/${dir}`, { baseDir: BaseDirectory.Document, recursive: true });
+      }
+
+      // Create starter files
+      const files = {
+        'studio/package.json': JSON.stringify(
+          {
+            name: 'studio-site',
+            type: 'module',
+            version: '0.0.1',
+            scripts: {
+              dev: 'astro dev',
+              start: 'astro dev',
+              build: 'astro check && astro build',
+              preview: 'astro preview',
+              astro: 'astro',
+            },
+            dependencies: {
+              astro: '^4.16.18',
+              '@astrojs/check': '^0.9.2',
+              typescript: '^5.6.2',
+            },
+          },
+          null,
+          2
+        ),
+
+        'studio/README.md': `# Studio Site
+
+Welcome to your Studio! This Astro-powered website was automatically created by Studio Builder Desktop.
+
+## 🚀 Getting Started
+
+1. Install dependencies:
+   \`\`\`bash
+   npm install
+   \`\`\`
+
+2. Start the development server:
+   \`\`\`bash
+   npm run dev
+   \`\`\`
+
+3. Open your browser to \`http://localhost:4321\`
+
+Built with ❤️ by Studio Builder Desktop`,
+
+        'studio/astro.config.mjs': `import { defineConfig } from 'astro/config';
+
+// https://astro.build/config
+export default defineConfig({
+  output: 'static',
+  outDir: './dist',
+  publicDir: './public',
+  srcDir: './src'
+});`,
+
+        'studio/tsconfig.json': JSON.stringify(
+          {
+            extends: 'astro/tsconfigs/strict',
+            compilerOptions: {
+              baseUrl: '.',
+              paths: {
+                '@/*': ['./src/*'],
+              },
+            },
+          },
+          null,
+          2
+        ),
+
+        'studio/src/layouts/Layout.astro': `---
+export interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Welcome to your Studio!" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <style>
+      html { font-family: system-ui, sans-serif; }
+      body { 
+        margin: 0; padding: 2rem; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh; color: white;
+      }
+      .container { max-width: 800px; margin: 0 auto; }
+      h1 { font-size: 3rem; margin-bottom: 1rem; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+      .card { 
+        background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
+        border-radius: 1rem; padding: 2rem; margin: 2rem 0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <slot />
+    </div>
+  </body>
+</html>`,
+
+        'studio/src/pages/index.astro': `---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Welcome to Your Studio">
+  <main>
+    <h1>🎨 Welcome to Your Studio</h1>
+    
+    <div class="card">
+      <h2>✨ Your Site is Ready!</h2>
+      <p>
+        Congratulations! Your Astro-powered studio site has been automatically set up 
+        by Studio Builder Desktop and is ready to use.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>🚀 Get Started</h3>
+      <p>To start the development server, run:</p>
+      <code>npm install && npm run dev</code>
+    </div>
+
+    <div class="card">
+      <h2>🎯 Built with Studio Builder Desktop</h2>
+      <p>
+        This site was automatically created and configured for you. No setup required – 
+        just start creating!
+      </p>
+    </div>
+  </main>
+</Layout>`,
+
+        'studio/public/favicon.svg': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="45" fill="url(#grad)"/>
+  <text x="50" y="58" font-family="Arial, sans-serif" font-size="32" fill="white" text-anchor="middle">✶</text>
+</svg>`,
+      };
+
+      // Write all files
+      for (const [filePath, content] of Object.entries(files)) {
+        await writeTextFile(filePath, content, { baseDir: BaseDirectory.Document });
+      }
+
+      console.log('Starter site created successfully');
+    } catch (error) {
+      console.error('Failed to create starter site:', error);
+      throw error;
+    }
+  };
+
+  // Auto-initialize studio on first launch
+  useEffect(() => {
+    initializeStudio();
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -875,12 +1018,12 @@ This file was created to test Tauri's file system access on macOS.
 
   return (
     <div className="relative flex min-h-screen items-center justify-center text-neutral-50 selection:bg-neutral-700">
-      {/* File System Test Button */}
+      {/* Initialize Studio Button */}
       <button
-        onClick={testFileSystem}
+        onClick={initializeStudio}
         className="fixed top-4 left-4 z-50 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg shadow-lg transition-colors"
       >
-        Test File System
+        Initialize Studio
       </button>
       <div ref={containerRef} className="relative h-[28rem] w-[28rem] select-none">
         <div className="absolute top-1/2 left-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/5 shadow-inner backdrop-blur-sm pointer-events-none">

@@ -1,0 +1,71 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Welcome to Your Studio">
+  <main>
+    <h1>🎨 Welcome to Your Studio</h1>
+    
+    <div class="card">
+      <h2>✨ Your Site is Ready!</h2>
+      <p>
+        Congratulations! Your Astro-powered studio site has been automatically set up and is ready to use.
+        This starter site was created by Studio Builder Desktop and placed in your Documents folder.
+      </p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>🚀 Get Started</h3>
+        <p>
+          Your site is located at: <br/>
+          <code>~/Documents/studio/</code>
+        </p>
+        <p>
+          To start the development server, open a terminal in that folder and run:
+        </p>
+        <code>npm install && npm run dev</code>
+      </div>
+
+      <div class="card">
+        <h3>📁 File Structure</h3>
+        <ul style="text-align: left; font-family: monospace; font-size: 0.9rem;">
+          <li>📄 src/pages/ - Your website pages</li>
+          <li>🧩 src/components/ - Reusable components</li>
+          <li>🎨 src/layouts/ - Page layouts</li>
+          <li>📦 public/ - Static assets</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>📖 Learn More</h3>
+        <p>
+          Check out the <a href="https://docs.astro.build" style="color: #87ceeb;">Astro documentation</a> 
+          to learn about building amazing websites with Astro.
+        </p>
+        <p>
+          This starter includes everything you need to create a modern, fast website.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>🛠 Next Steps</h3>
+        <ul style="text-align: left;">
+          <li>Customize this page in <code>src/pages/index.astro</code></li>
+          <li>Add new pages in the <code>src/pages/</code> directory</li>
+          <li>Create components in <code>src/components/</code></li>
+          <li>Build and deploy when you're ready!</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🎯 Built with Studio Builder Desktop</h2>
+      <p>
+        This site was automatically created and configured for you. No setup required – 
+        just start creating! The Studio Builder Desktop app makes it easy to manage 
+        your Astro projects and content.
+      </p>
+    </div>
+  </main>
+</Layout> 
