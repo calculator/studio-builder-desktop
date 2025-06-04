@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FolderPlus, Eye, X as Close } from 'lucide-react';
+import { writeTextFile, BaseDirectory, mkdir, exists } from '@tauri-apps/plugin-fs';
 
 /* ──────────────────────────────────────────────────────────
    Utilities & Types
@@ -765,6 +766,82 @@ export default function StudioDashboard() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // File system test function - handles iCloud Documents
+  const testFileSystem = async () => {
+    try {
+      // Try multiple approaches for macOS Documents folder
+      const strategies = [
+        // Strategy 1: Use BaseDirectory.Document (standard approach)
+        async () => {
+          await mkdir('studio', { baseDir: BaseDirectory.Document, recursive: true });
+          return { baseDir: BaseDirectory.Document, path: 'studio/test.md', location: 'Documents (BaseDirectory)' };
+        },
+
+        // Strategy 2: Use Home directory + Documents (bypass iCloud issues)
+        async () => {
+          // Note: This might require different permissions
+          await mkdir('Documents/studio', { baseDir: BaseDirectory.Home, recursive: true });
+          return { baseDir: BaseDirectory.Home, path: 'Documents/studio/test.md', location: 'Home/Documents' };
+        },
+
+        // Strategy 3: Use Desktop as fallback (usually works better with iCloud)
+        async () => {
+          await mkdir('studio', { baseDir: BaseDirectory.Desktop, recursive: true });
+          return { baseDir: BaseDirectory.Desktop, path: 'studio/test.md', location: 'Desktop' };
+        },
+      ];
+
+      let lastError = null;
+
+      for (let i = 0; i < strategies.length; i++) {
+        try {
+          console.log(`Trying file system strategy ${i + 1}...`);
+          const result = await strategies[i]();
+
+          // Create a test file
+          const testContent = `# Studio Test File
+Created at: ${new Date().toISOString()}
+Strategy: ${result.location}
+Path: ${result.path}
+
+This file was created to test Tauri's file system access on macOS.
+
+## System Info
+- Strategy used: ${i + 1}/${strategies.length}
+- Location: ${result.location}
+- iCloud Documents might be: ${result.location.includes('BaseDirectory') ? 'enabled' : 'bypassed'}
+`;
+
+          await writeTextFile(result.path, testContent, { baseDir: result.baseDir });
+
+          alert(
+            `✅ File system test successful!\n\nCreated: ${result.path}\nLocation: ${result.location}\nStrategy: ${
+              i + 1
+            }/${strategies.length}`
+          );
+          return; // Success, exit function
+        } catch (error) {
+          console.warn(`Strategy ${i + 1} failed:`, error);
+          lastError = error;
+          continue; // Try next strategy
+        }
+      }
+
+      // If we get here, all strategies failed
+      throw lastError;
+    } catch (error) {
+      console.error('All file system strategies failed:', error);
+
+      let errorMessage = `❌ File system test failed: ${error}`;
+
+      if (error.toString().includes('forbidden')) {
+        errorMessage += `\n\n💡 This might be due to:\n• iCloud Documents & Desktop sync\n• macOS security permissions\n• Tauri capability configuration\n\nTry:\n1. Disable iCloud for Documents\n2. Grant file access permissions\n3. Check Tauri capabilities`;
+      }
+
+      alert(errorMessage);
+    }
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
@@ -798,6 +875,13 @@ export default function StudioDashboard() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center text-neutral-50 selection:bg-neutral-700">
+      {/* File System Test Button */}
+      <button
+        onClick={testFileSystem}
+        className="fixed top-4 left-4 z-50 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg shadow-lg transition-colors"
+      >
+        Test File System
+      </button>
       <div ref={containerRef} className="relative h-[28rem] w-[28rem] select-none">
         <div className="absolute top-1/2 left-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/5 shadow-inner backdrop-blur-sm pointer-events-none">
           <motion.span layoutId="avatar" className="text-sm opacity-60">
