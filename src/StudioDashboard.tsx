@@ -746,7 +746,7 @@ export default function StudioDashboard() {
               astro: 'astro',
             },
             dependencies: {
-              astro: '^4.16.18',
+              astro: '^5.9.0',
               '@astrojs/check': '^0.9.2',
               typescript: '^5.6.2',
             },
