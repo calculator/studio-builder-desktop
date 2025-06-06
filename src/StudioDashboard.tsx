@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FolderPlus, Eye, X as Close } from 'lucide-react';
-import { writeTextFile, BaseDirectory, mkdir, exists, readDir, copyFile } from '@tauri-apps/plugin-fs';
-import { resolveResource } from '@tauri-apps/api/path';
+import { writeTextFile, BaseDirectory, mkdir, readDir } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 
 /* ──────────────────────────────────────────────────────────
@@ -17,9 +16,10 @@ const polar = (r: number, angleDeg: number) => {
 };
 
 interface Post {
-  id: string;
+  filename: string;
   title: string;
-  body?: string;
+  slug: string;
+  content: string;
 }
 
 interface Project {
@@ -92,7 +92,7 @@ function RadialMenu({
   actions,
 }: {
   open: boolean;
-  actions: { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void }[];
+  actions: { icon: any; label: string; onClick: () => void }[];
 }) {
   const radius = 80;
   const offsetFor = (index: number) => {
@@ -137,9 +137,20 @@ function RadialMenu({
 /* ──────────────────────────────────────────────────────────
    Post Editor (unchanged)
 ────────────────────────────────────────────────────────── */
-function PostEditor({ post, onClose }: { post: Post; onClose: () => void }) {
-  const [title, setTitle] = useState(post.title);
-  const [body, setBody] = useState(post.body ?? '');
+function PostEditor({
+  post,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  post: Post;
+  onClose: () => void;
+  onSave: (content: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [content, setContent] = useState(post.content || '');
+  const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => {
@@ -151,39 +162,91 @@ function PostEditor({ post, onClose }: { post: Post; onClose: () => void }) {
 
   // Update local state when post prop changes
   useEffect(() => {
-    setTitle(post.title);
-    setBody(post.body ?? '');
-  }, [post]);
+    setContent(post.content || '');
+  }, [post.content]);
 
-  const handlePublish = () => {
-    // Update the post with current values
-    post.title = title;
-    post.body = body;
-    // You could add publish logic here (API calls, etc.)
-    console.log('Publishing post:', { title, body });
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(content);
+    } catch (error) {
+      console.error('Failed to save post:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    console.log('PostEditor handleDelete called, post:', post);
+    console.log('Proceeding with deletion');
+    try {
+      await onDelete();
+      console.log('onDelete function completed successfully');
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete post:', error);
+    }
+  };
+
+  const confirmDelete = () => {
+    setShowDeleteConfirm(true);
   };
 
   return (
     <div className="h-full w-full p-8 flex flex-col">
-      <button
-        onClick={handlePublish}
-        className="absolute right-4 top-4 px-4 py-2 bg-black text-sm text-white rounded-lg transition-colors"
-        aria-label="Publish post"
-      >
-        Publish
-      </button>
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Post title"
-        className="mb-6 w-full border-none bg-transparent text-2xl font-semibold text-neutral-50 placeholder-neutral-500 focus:ring-0 flex-shrink-0"
-      />
+      <div className="flex gap-2 absolute right-4 top-4">
+        <button
+          onClick={confirmDelete}
+          className="px-4 py-2 bg-red-600 text-sm text-white rounded-lg hover:bg-red-700 transition-colors"
+          aria-label="Delete post"
+        >
+          Delete
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-4 py-2 bg-blue-600 text-sm text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+          aria-label="Save post"
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+      <div className="mb-6 text-2xl font-semibold text-neutral-50 flex-shrink-0">{post.title}</div>
       <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
         placeholder="Write in markdown…"
         className="flex-1 w-full resize-none rounded-lg bg-neutral-800/40 p-4 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-600"
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-neutral-800 p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-white mb-2">Delete Post</h3>
+            <p className="text-neutral-300 mb-6">
+              Are you sure you want to delete "{post.title}"? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-neutral-600 text-white rounded-lg hover:bg-neutral-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  handleDelete();
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -368,16 +431,111 @@ function ProjectEditor({
   initialPosition?: { x: number; y: number };
   onDeleteProject: (id: string) => void;
 }) {
-  const [posts, setPosts] = useState<Post[]>(project.posts);
-  const [openPost, setOpenPost] = useState<Post | null>(posts.length > 0 ? posts[0] : null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [openPost, setOpenPost] = useState<Post | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const addPost = () => {
-    const newPost = { id: Date.now().toString(), title: `Post ${posts.length + 1}` };
-    setPosts((prev) => [...prev, newPost]);
-    project.posts.push(newPost);
-    // Auto-select the newly created post
-    setOpenPost(newPost);
+  // Load posts when component mounts
+  useEffect(() => {
+    loadPosts();
+  }, [project.name]);
+
+  const loadPosts = async () => {
+    if (!project.name) return;
+
+    try {
+      setLoading(true);
+      const result = await invoke<Post[]>('list_posts', { projectName: project.name });
+      setPosts(result);
+      if (result.length > 0 && !openPost) {
+        setOpenPost(result[0]);
+      }
+    } catch (error) {
+      console.error('Failed to load posts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createPost = async () => {
+    console.log('createPost called, project.name:', project.name);
+    if (!project.name) {
+      console.error('No project name available');
+      alert('Error: No project name available');
+      return;
+    }
+
+    try {
+      const title = 'Untitled Post';
+      console.log('Creating post with title:', title, 'for project:', project.name);
+      const newPost = await invoke<Post>('create_post', {
+        projectName: project.name,
+        title,
+      });
+      console.log('Post created successfully:', newPost);
+      setPosts((prev) => [...prev, newPost]);
+      setOpenPost(newPost);
+    } catch (error) {
+      console.error('Failed to create post:', error);
+      alert(`Failed to create post: ${error}`);
+    }
+  };
+
+  const savePost = async (content: string) => {
+    if (!openPost || !project.name) return;
+
+    try {
+      await invoke('update_post', {
+        projectName: project.name,
+        slug: openPost.slug,
+        content,
+      });
+
+      // Update the post content in state
+      setPosts((prev) => prev.map((post) => (post.slug === openPost.slug ? { ...post, content } : post)));
+      setOpenPost((prev) => (prev ? { ...prev, content } : null));
+    } catch (error) {
+      console.error('Failed to save post:', error);
+      throw error;
+    }
+  };
+
+  const deletePost = async () => {
+    console.log('deletePost called, openPost:', openPost, 'project.name:', project.name);
+    if (!openPost || !project.name) {
+      console.error('Missing openPost or project.name');
+      return;
+    }
+
+    try {
+      console.log('Deleting post:', openPost.slug, 'from project:', project.name);
+      await invoke('delete_post', {
+        projectName: project.name,
+        slug: openPost.slug,
+      });
+      console.log('Post deleted successfully');
+
+      setPosts((prev) => prev.filter((post) => post.slug !== openPost.slug));
+      setOpenPost(null);
+    } catch (error) {
+      console.error('Failed to delete post:', error);
+      throw error;
+    }
+  };
+
+  const selectPost = async (post: Post) => {
+    if (!project.name) return;
+
+    try {
+      const fullPost = await invoke<Post>('read_post', {
+        projectName: project.name,
+        slug: post.slug,
+      });
+      setOpenPost(fullPost);
+    } catch (error) {
+      console.error('Failed to read post:', error);
+    }
   };
 
   const handleDeleteProject = () => {
@@ -458,7 +616,7 @@ function ProjectEditor({
           </div>
 
           <button
-            onClick={addPost}
+            onClick={createPost}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-50/10 backdrop-blur-lg shadow-md transition active:scale-90"
             aria-label="New Post"
           >
@@ -468,33 +626,39 @@ function ProjectEditor({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          {posts.map((post) => (
-            <motion.div
-              key={post.id}
-              className={`relative flex cursor-pointer items-center justify-center rounded-xl p-6 text-sm backdrop-blur-lg transition-colors ${
-                openPost?.id === post.id ? 'bg-blue-600/30 border border-blue-400' : 'bg-white/10 hover:bg-white/15'
-              }`}
-              whileHover={{ scale: 1.02 }}
-              onClick={() => setOpenPost(post)}
-            >
-              {post.title}
-            </motion.div>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center h-32 text-neutral-500">Loading posts...</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {posts.map((post) => (
+              <motion.div
+                key={post.slug}
+                className={`relative flex cursor-pointer items-center justify-center rounded-xl p-6 text-sm backdrop-blur-lg transition-colors ${
+                  openPost?.slug === post.slug
+                    ? 'bg-blue-600/30 border border-blue-400'
+                    : 'bg-white/10 hover:bg-white/15'
+                }`}
+                whileHover={{ scale: 1.02 }}
+                onClick={() => selectPost(post)}
+              >
+                {post.title}
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Right Column - Post Editor */}
       <div className="w-1/2 bg-neutral-800/50 relative">
         {openPost ? (
-          <PostEditor post={openPost} onClose={() => setOpenPost(null)} />
+          <PostEditor post={openPost} onClose={() => setOpenPost(null)} onSave={savePost} onDelete={deletePost} />
         ) : (
           <div className="flex items-center justify-center h-full text-neutral-500">
             <div className="text-center">
               <div className="text-4xl mb-4">📝</div>
               <p>No posts yet</p>
               <button
-                onClick={addPost}
+                onClick={createPost}
                 className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Create your first post
@@ -640,7 +804,7 @@ function PublicSitePreview({
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
               {view.project.posts.map((post) => (
                 <div
-                  key={post.id}
+                  key={post.slug}
                   onClick={() => setView({ type: 'post', project: view.project, post })}
                   className="cursor-pointer rounded-xl border bg-neutral-50 p-5 shadow-sm transition hover:shadow-md"
                 >
@@ -654,10 +818,10 @@ function PublicSitePreview({
           <div className="max-w-[700px] w-full mx-auto">
             <h1 className="mb-6 text-3xl font-bold text-left">{view.post.title}</h1>
             <div className="prose prose-neutral max-w-none text-left">
-              {view.post.body ? (
+              {view.post.content ? (
                 <div
                   className="text-neutral-700 leading-relaxed text-left"
-                  dangerouslySetInnerHTML={{ __html: parseMarkdown(view.post.body) }}
+                  dangerouslySetInnerHTML={{ __html: parseMarkdown(view.post.content) }}
                 />
               ) : (
                 <p className="text-sm text-neutral-500 text-left">No content available</p>
@@ -911,7 +1075,7 @@ import Layout from '../layouts/Layout.astro';
           path: proj.path,
           x,
           y,
-          posts: [{ id: `${proj.name}-1`, title: 'Welcome', body: 'Welcome to your project!' }],
+          posts: [], // Posts will be loaded dynamically when project is opened
         };
       });
 

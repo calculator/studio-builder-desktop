@@ -1,11 +1,19 @@
 use std::fs;
-use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Project {
     name: String,
     path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Post {
+    filename: String,
+    title: String,
+    slug: String,
+    content: String,
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -111,6 +119,267 @@ import Layout from './_layout.astro';
     })
 }
 
+// Post CRUD operations
+#[tauri::command]
+async fn list_posts(project_name: String) -> Result<Vec<Post>, String> {
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+    
+    let project_path = documents_dir.join("studio").join("src").join("pages").join(&project_name);
+    
+    if !project_path.exists() {
+        return Err(format!("Project '{}' does not exist", project_name));
+    }
+    
+    let mut posts = Vec::new();
+    
+    match fs::read_dir(&project_path) {
+        Ok(entries) => {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(extension) = path.extension() {
+                            if extension == "md" {
+                                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                                    let slug = filename.strip_suffix(".md").unwrap_or(filename).to_string();
+                                    
+                                    // Read the file to extract the title
+                                    let content = fs::read_to_string(&path).unwrap_or_default();
+                                    let title = extract_title_from_markdown(&content, &slug);
+                                    
+                                    posts.push(Post {
+                                        filename: filename.to_string(),
+                                        title,
+                                        slug,
+                                        content: String::new(), // Don't load full content for listing
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => return Err(format!("Failed to read project directory: {}", e)),
+    }
+    
+    posts.sort_by(|a, b| a.filename.cmp(&b.filename));
+    Ok(posts)
+}
+
+#[tauri::command]
+async fn create_post(project_name: String, title: String) -> Result<Post, String> {
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+    
+    let project_path = documents_dir.join("studio").join("src").join("pages").join(&project_name);
+    
+    if !project_path.exists() {
+        return Err(format!("Project '{}' does not exist", project_name));
+    }
+    
+    // Generate a unique slug
+    let base_slug = sanitize_slug(&title);
+    let mut slug = base_slug.clone();
+    let mut counter = 1;
+    
+    // Ensure unique filename
+    while project_path.join(format!("{}.md", slug)).exists() {
+        slug = format!("{}-{}", base_slug, counter);
+        counter += 1;
+    }
+    
+    let filename = format!("{}.md", slug);
+    let file_path = project_path.join(&filename);
+    
+    // Create markdown content with frontmatter
+    let content = format!(r#"---
+title: "{}"
+date: {}
+---
+
+# {}
+
+Write your content here...
+"#, title, chrono::Utc::now().format("%Y-%m-%d"), title);
+    
+    // Write the file
+    if let Err(e) = fs::write(&file_path, &content) {
+        return Err(format!("Failed to create post file: {}", e));
+    }
+    
+    Ok(Post {
+        filename,
+        title,
+        slug,
+        content,
+    })
+}
+
+#[tauri::command]
+async fn read_post(project_name: String, slug: String) -> Result<Post, String> {
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+    
+    let project_path = documents_dir.join("studio").join("src").join("pages").join(&project_name);
+    let filename = format!("{}.md", slug);
+    let file_path = project_path.join(&filename);
+    
+    if !file_path.exists() {
+        return Err(format!("Post '{}' does not exist", slug));
+    }
+    
+    let content = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read post file: {}", e))?;
+    
+    let title = extract_title_from_markdown(&content, &slug);
+    
+    Ok(Post {
+        filename,
+        title,
+        slug,
+        content,
+    })
+}
+
+#[tauri::command]
+async fn update_post(project_name: String, slug: String, content: String) -> Result<(), String> {
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+    
+    let project_path = documents_dir.join("studio").join("src").join("pages").join(&project_name);
+    let filename = format!("{}.md", slug);
+    let file_path = project_path.join(&filename);
+    
+    if !file_path.exists() {
+        return Err(format!("Post '{}' does not exist", slug));
+    }
+    
+    // Atomic write: write to temp file first, then rename
+    let temp_path = project_path.join(format!(".{}.tmp", filename));
+    
+    // Write to temp file
+    {
+        let mut temp_file = fs::File::create(&temp_path)
+            .map_err(|e| format!("Failed to create temp file: {}", e))?;
+        temp_file.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+        temp_file.sync_all()
+            .map_err(|e| format!("Failed to sync temp file: {}", e))?;
+    }
+    
+    // Atomically replace the original file
+    fs::rename(&temp_path, &file_path)
+        .map_err(|e| format!("Failed to replace original file: {}", e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_post(project_name: String, slug: String) -> Result<(), String> {
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+    
+    let project_path = documents_dir.join("studio").join("src").join("pages").join(&project_name);
+    let filename = format!("{}.md", slug);
+    let file_path = project_path.join(&filename);
+    
+    if !file_path.exists() {
+        return Err(format!("Post '{}' does not exist", slug));
+    }
+    
+    fs::remove_file(&file_path)
+        .map_err(|e| format!("Failed to delete post file: {}", e))?;
+    
+    Ok(())
+}
+
+// Helper functions
+fn extract_title_from_markdown(content: &str, fallback_slug: &str) -> String {
+    // First try to extract title from frontmatter
+    if let Some(frontmatter_title) = extract_frontmatter_title(content) {
+        return frontmatter_title;
+    }
+    
+    // Then try to find the first heading
+    let lines = content.lines();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("# ") {
+            return trimmed[2..].trim().to_string();
+        }
+    }
+    
+    // Fallback to slug formatted as title
+    fallback_slug.replace('-', " ").replace('_', " ")
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn extract_frontmatter_title(content: &str) -> Option<String> {
+    if !content.starts_with("---") {
+        return None;
+    }
+    
+    let lines: Vec<&str> = content.lines().collect();
+    let mut in_frontmatter = false;
+    let mut frontmatter_end = 0;
+    
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 && line.trim() == "---" {
+            in_frontmatter = true;
+            continue;
+        }
+        if in_frontmatter && line.trim() == "---" {
+            frontmatter_end = i;
+            break;
+        }
+    }
+    
+    if frontmatter_end > 0 {
+        for i in 1..frontmatter_end {
+            let line = lines[i].trim();
+            if line.starts_with("title:") {
+                let title_part = &line[6..].trim();
+                // Remove quotes if present
+                let title = if (title_part.starts_with('"') && title_part.ends_with('"')) ||
+                              (title_part.starts_with('\'') && title_part.ends_with('\'')) {
+                    &title_part[1..title_part.len()-1]
+                } else {
+                    title_part
+                };
+                return Some(title.to_string());
+            }
+        }
+    }
+    
+    None
+}
+
+fn sanitize_slug(title: &str) -> String {
+    title.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            ' ' | '_' => '-',
+            c if c.is_alphanumeric() || c == '-' => c,
+            _ => '-',
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 fn sanitize_project_name(name: &str) -> String {
     name.chars()
         .map(|c| match c {
@@ -131,7 +400,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, list_projects, create_project])
+        .invoke_handler(tauri::generate_handler![
+            greet, 
+            list_projects, 
+            create_project,
+            list_posts,
+            create_post,
+            read_post,
+            update_post,
+            delete_post
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
