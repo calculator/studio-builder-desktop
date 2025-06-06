@@ -83,30 +83,75 @@ async fn create_project(name: String) -> Result<Project, String> {
         return Err(format!("Failed to create project directory: {}", e));
     }
     
-    // Create a blank _layout.astro file so Astro won't complain
-    let layout_content = r#"---
-// Layout for the project pages
+    // Create a project-specific layout that uses the main PostLayout
+    let layout_content = format!(r#"---
+import PostLayout from '../../layouts/PostLayout.astro';
+
+export interface Props {{
+  title: string;
+}}
+
+const {{ title }} = Astro.props;
+const projectName = '{}';
 ---
 
-<slot />
-"#;
+<PostLayout title={{title}} projectName={{projectName}}>
+  <slot />
+</PostLayout>
+"#, sanitized_name);
     
     let layout_path = project_path.join("_layout.astro");
     if let Err(e) = fs::write(&layout_path, layout_content) {
         return Err(format!("Failed to create layout file: {}", e));
     }
     
-    // Create an index.astro file as well
+    // Create an index.astro file for the project listing
     let index_content = format!(r#"---
-import Layout from './_layout.astro';
+import ProjectLayout from '../../layouts/ProjectLayout.astro';
+import {{ readdir }} from 'node:fs/promises';
+import path from 'node:path';
+
+const projectName = '{}';
+const projectDir = path.join(process.cwd(), 'src/pages', projectName);
+
+// Get all markdown posts
+let posts = [];
+try {{
+  const entries = await readdir(projectDir);
+  posts = entries
+    .filter(file => file.endsWith('.md'))
+    .map(file => {{
+      const slug = file.replace('.md', '');
+      return {{
+        slug,
+        title: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        href: `/${{projectName}}/${{slug}}`
+      }};
+    }});
+}} catch (error) {{
+  console.log('No posts found yet');
+}}
 ---
 
-<Layout>
-  <h1>{}</h1>
-  <p>This is your new project page. Start building something amazing!</p>
-  <p><em>You can rename this project by changing the folder name in your file system.</em></p>
-</Layout>
-"#, name);
+<ProjectLayout title="{{projectName.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}}" projectName={{projectName}}>
+  <h2>Posts</h2>
+  
+  {{posts.length > 0 ? (
+    <div class="post-grid">
+      {{posts.map((post) => (
+        <a href={{post.href}} class="card post-card">
+          {{post.title}}
+        </a>
+      ))}}
+    </div>
+  ) : (
+    <div class="card">
+      <h3>No posts yet</h3>
+      <p>Create your first post using Studio Builder Desktop!</p>
+    </div>
+  )}}
+</ProjectLayout>
+"#, sanitized_name);
     
     let index_path = project_path.join("index.astro");
     if let Err(e) = fs::write(&index_path, index_content) {

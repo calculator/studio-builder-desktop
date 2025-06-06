@@ -1039,58 +1039,244 @@ const { title } = Astro.props;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
     <style>
-      html { font-family: system-ui, sans-serif; }
-      body { 
-        margin: 0; padding: 2rem; 
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh; color: white;
+      html { 
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
       }
-      .container { max-width: 800px; margin: 0 auto; }
-      h1 { font-size: 3rem; margin-bottom: 1rem; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+      body { 
+        margin: 0; 
+        background: white;
+        color: #171717;
+        line-height: 1.6;
+      }
+      .nav-header {
+        border-bottom: 1px solid #e5e5e5;
+        padding: 1rem 1.5rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .nav-title {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #171717;
+      }
+      .container { 
+        max-width: 96rem; 
+        margin: 0 auto; 
+        padding: 2rem;
+        display: flex;
+        justify-content: center;
+      }
+      .content-wrapper {
+        width: 100%;
+        max-width: 72rem;
+      }
+      h1 { 
+        font-size: 2rem; 
+        font-weight: 600; 
+        margin-bottom: 1.5rem; 
+        color: #171717;
+      }
+      h2 { 
+        font-size: 1.5rem; 
+        font-weight: 600; 
+        margin-bottom: 1.5rem; 
+        color: #171717;
+      }
+      h3 { 
+        font-size: 1.125rem; 
+        font-weight: 600; 
+        color: #171717;
+      }
+      .project-grid { 
+        display: grid; 
+        gap: 1.5rem; 
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      }
+      .post-grid { 
+        display: grid; 
+        gap: 1rem; 
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
       .card { 
-        background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
-        border-radius: 1rem; padding: 2rem; margin: 2rem 0;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+        border-radius: 1rem; 
+        border: 1px solid #e5e5e5;
+        background: #fafafa; 
+        padding: 1.5rem; 
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+        text-decoration: none;
+        color: inherit;
+      }
+      .card:hover { 
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); 
+        transform: translateY(-1px);
+      }
+      .card h3 {
+        margin: 0 0 0.5rem 0;
+      }
+      .card p {
+        margin: 0;
+        font-size: 0.75rem;
+        color: #737373;
+      }
+      .post-card {
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+      }
+      .post-content {
+        max-width: 43.75rem;
+        margin: 0 auto;
+      }
+      .post-title {
+        font-size: 1.875rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+      }
+      .prose {
+        color: #525252;
+        line-height: 1.75;
+      }
+      .prose p {
+        margin-bottom: 1rem;
+      }
+      .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+        color: #171717;
+        font-weight: 600;
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+      }
+      .back-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        color: #737373;
+        text-decoration: none;
+        font-size: 0.875rem;
+        margin-bottom: 1.5rem;
+        transition: color 0.2s ease;
+      }
+      .back-button:hover {
+        color: #171717;
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <slot />
-    </div>
+    <slot />
   </body>
 </html>`,
 
         'studio/src/pages/index.astro': `---
 import Layout from '../layouts/Layout.astro';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+
+// Get all project directories from src/pages
+const pagesDir = path.join(process.cwd(), 'src/pages');
+let projects = [];
+
+try {
+  const entries = await readdir(pagesDir, { withFileTypes: true });
+  projects = entries
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => !name.startsWith('.') && name !== 'index.astro');
+} catch (error) {
+  console.log('No projects found yet');
+}
 ---
 
-<Layout title="Welcome to Your Studio">
-  <main>
-    <h1>🎨 Welcome to Your Studio</h1>
-    
-    <div class="card">
-      <h2>✨ Your Site is Ready!</h2>
-      <p>
-        Congratulations! Your Astro-powered studio site has been automatically set up 
-        by Studio Builder Desktop and is ready to use.
-      </p>
+<Layout title="Studio">
+  <div class="nav-header">
+    <span class="nav-title">Studio</span>
+  </div>
+  
+  <div class="container">
+    <div class="content-wrapper">
+      <h1>Projects</h1>
+      
+      {projects.length > 0 ? (
+        <div class="project-grid">
+          {projects.map((project) => (
+            <a href={\`/\${project}\`} class="card">
+              <h3>{project.replace(/-/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase())}</h3>
+              <p>Project posts</p>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div class="card">
+          <h3>Welcome to Your Studio</h3>
+          <p>No projects found yet. Create your first project using Studio Builder Desktop!</p>
+        </div>
+      )}
     </div>
+  </div>
+</Layout>`,
 
-    <div class="card">
-      <h3>🚀 Get Started</h3>
-      <p>To start the development server, run:</p>
-      <code>npm install && npm run dev</code>
-    </div>
+        'studio/src/layouts/ProjectLayout.astro': `---
+import Layout from './Layout.astro';
 
-    <div class="card">
-      <h2>🎯 Built with Studio Builder Desktop</h2>
-      <p>
-        This site was automatically created and configured for you. No setup required – 
-        just start creating!
-      </p>
+export interface Props {
+  title: string;
+  projectName: string;
+}
+
+const { title, projectName } = Astro.props;
+---
+
+<Layout title={title}>
+  <div class="nav-header">
+    <a href="/" class="back-button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 18l-6-6 6-6"></path>
+      </svg>
+      Back
+    </a>
+    <span class="nav-title">{projectName.replace(/-/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase())}</span>
+    <div></div>
+  </div>
+  
+  <div class="container">
+    <div class="content-wrapper">
+      <slot />
     </div>
-  </main>
+  </div>
+</Layout>`,
+
+        'studio/src/layouts/PostLayout.astro': `---
+import Layout from './Layout.astro';
+
+export interface Props {
+  title: string;
+  projectName: string;
+}
+
+const { title, projectName } = Astro.props;
+---
+
+<Layout title={title}>
+  <div class="nav-header">
+    <a href={\`/\${projectName}\`} class="back-button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 18l-6-6 6-6"></path>
+      </svg>
+      Back
+    </a>
+    <span class="nav-title">{projectName.replace(/-/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase())}</span>
+    <div></div>
+  </div>
+  
+  <div class="container">
+    <div class="post-content">
+      <slot />
+    </div>
+  </div>
 </Layout>`,
 
         'studio/public/favicon.svg': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
