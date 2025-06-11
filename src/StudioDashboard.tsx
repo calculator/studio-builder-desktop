@@ -923,18 +923,6 @@ export default function StudioDashboard() {
     }
   };
 
-  // Create the starter Astro site (now handled by backend)
-  const createStarterSite = async () => {
-    try {
-      console.log('Creating starter site...');
-      await invoke('create_starter_site');
-      console.log('Starter site created successfully');
-    } catch (error) {
-      console.error('Failed to create starter site:', error);
-      throw error;
-    }
-  };
-
   // Load projects from file system
   const loadProjects = async () => {
     try {
