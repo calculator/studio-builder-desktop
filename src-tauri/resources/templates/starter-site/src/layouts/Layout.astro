@@ -1,0 +1,148 @@
+---
+export interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Welcome to your Studio!" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <style>
+      html { 
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      }
+      body { 
+        margin: 0; 
+        background: white;
+        color: #171717;
+        line-height: 1.6;
+      }
+      .nav-header {
+        border-bottom: 1px solid #e5e5e5;
+        padding: 1rem 1.5rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .nav-title {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #171717;
+      }
+      .container { 
+        max-width: 96rem; 
+        margin: 0 auto; 
+        padding: 2rem;
+        display: flex;
+        justify-content: center;
+      }
+      .content-wrapper {
+        width: 100%;
+        max-width: 72rem;
+      }
+      h1 { 
+        font-size: 2rem; 
+        font-weight: 600; 
+        margin-bottom: 1.5rem; 
+        color: #171717;
+      }
+      h2 { 
+        font-size: 1.5rem; 
+        font-weight: 600; 
+        margin-bottom: 1.5rem; 
+        color: #171717;
+      }
+      h3 { 
+        font-size: 1.125rem; 
+        font-weight: 600; 
+        color: #171717;
+      }
+      .project-grid { 
+        display: grid; 
+        gap: 1.5rem; 
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      }
+      .post-grid { 
+        display: grid; 
+        gap: 1rem; 
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
+      .card { 
+        cursor: pointer;
+        border-radius: 1rem; 
+        border: 1px solid #e5e5e5;
+        background: #fafafa; 
+        padding: 1.5rem; 
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+        text-decoration: none;
+        color: inherit;
+      }
+      .card:hover { 
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); 
+        transform: translateY(-1px);
+      }
+      .card h3 {
+        margin: 0 0 0.5rem 0;
+      }
+      .card p {
+        margin: 0;
+        font-size: 0.75rem;
+        color: #737373;
+      }
+      .post-card {
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+      }
+      .post-content {
+        max-width: 43.75rem;
+        margin: 0 auto;
+      }
+      .post-title {
+        font-size: 1.875rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+      }
+      .prose {
+        color: #525252;
+        line-height: 1.75;
+      }
+      .prose p {
+        margin-bottom: 1rem;
+      }
+      .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+        color: #171717;
+        font-weight: 600;
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+      }
+      .back-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        color: #737373;
+        text-decoration: none;
+        font-size: 0.875rem;
+        margin-bottom: 1.5rem;
+        transition: color 0.2s ease;
+      }
+      .back-button:hover {
+        color: #171717;
+      }
+    </style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

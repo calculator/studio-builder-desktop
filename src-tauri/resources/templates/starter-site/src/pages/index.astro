@@ -1,0 +1,47 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+
+// Get all project directories from src/pages
+const pagesDir = path.join(process.cwd(), 'src/pages');
+let projects = [];
+
+try {
+  const entries = await readdir(pagesDir, { withFileTypes: true });
+  projects = entries
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => !name.startsWith('.') && name !== 'index.astro');
+} catch (error) {
+  console.log('No projects found yet');
+}
+---
+
+<Layout title="Studio">
+  <div class="nav-header">
+    <span class="nav-title">Studio</span>
+  </div>
+  
+  <div class="container">
+    <div class="content-wrapper">
+      <h1>Projects</h1>
+      
+      {projects.length > 0 ? (
+        <div class="project-grid">
+          {projects.map((project) => (
+            <a href={`/${project}`} class="card">
+              <h3>{project.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</h3>
+              <p>Project posts</p>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div class="card">
+          <h3>Welcome to Your Studio</h3>
+          <p>No projects found yet. Create your first project using Studio Builder Desktop!</p>
+        </div>
+      )}
+    </div>
+  </div>
+</Layout>

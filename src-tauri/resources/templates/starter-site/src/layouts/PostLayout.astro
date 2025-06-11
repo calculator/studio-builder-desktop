@@ -1,0 +1,29 @@
+---
+import Layout from './Layout.astro';
+
+export interface Props {
+  title: string;
+  projectName: string;
+}
+
+const { title, projectName } = Astro.props;
+---
+
+<Layout title={title}>
+  <div class="nav-header">
+    <a href={`/${projectName}`} class="back-button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 18l-6-6 6-6"></path>
+      </svg>
+      Back
+    </a>
+    <span class="nav-title">{projectName.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+    <div></div>
+  </div>
+  
+  <div class="container">
+    <div class="post-content">
+      <slot />
+    </div>
+  </div>
+</Layout>
