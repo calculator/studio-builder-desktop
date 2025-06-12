@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X as Close } from 'lucide-react';
 import { Project, Post } from '../types';

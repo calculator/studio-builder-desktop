@@ -1,35 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Project, Post } from '../types';
 import PostEditor from './PostEditor';
-import ProjectSettingsModal from './ProjectSettingsModal';
 
 interface ProjectEditorProps {
   project: Project;
   onClose: () => void;
   initialPosition?: { x: number; y: number };
   onDeleteProject: (id: string) => void;
+  onUpdateProject?: (updatedProject: Project) => void;
 }
 
-export default function ProjectEditor({ project, onClose, initialPosition, onDeleteProject }: ProjectEditorProps) {
+export default function ProjectEditor({ project, onClose, initialPosition, onUpdateProject }: ProjectEditorProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [openPost, setOpenPost] = useState<Post | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(project.label);
+  const [currentProjectName, setCurrentProjectName] = useState(project.name || project.label);
 
-  // Load posts when component mounts
+  // Load posts when component mounts or project changes
   useEffect(() => {
+    setCurrentProjectName(project.name || project.label);
     loadPosts();
-  }, [project.name]);
+  }, [project.folder_name, project.name, project.label]);
+
+  // Update edited title when project changes (for navigation)
+  useEffect(() => {
+    setEditedTitle(project.label);
+  }, [project.label]);
 
   const loadPosts = async () => {
-    if (!project.name) return;
+    if (!project.folder_name) return;
 
     try {
       setLoading(true);
-      const result = await invoke<Post[]>('list_posts', { projectName: project.name });
+      const result = await invoke<Post[]>('list_posts', { projectName: project.folder_name });
       setPosts(result);
       if (result.length > 0 && !openPost) {
         setOpenPost(result[0]);
@@ -42,18 +50,18 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
   };
 
   const createPost = async () => {
-    console.log('createPost called, project.name:', project.name);
-    if (!project.name) {
-      console.error('No project name available');
-      alert('Error: No project name available');
+    console.log('createPost called, project folder_name:', project.folder_name);
+    if (!project.folder_name) {
+      console.error('No project folder name available');
+      alert('Error: No project folder name available');
       return;
     }
 
     try {
       const title = 'Untitled Post';
-      console.log('Creating post with title:', title, 'for project:', project.name);
+      console.log('Creating post with title:', title, 'for project:', project.folder_name);
       const newPost = await invoke<Post>('create_post', {
-        projectName: project.name,
+        projectName: project.folder_name,
         title,
       });
       console.log('Post created successfully:', newPost);
@@ -66,11 +74,11 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
   };
 
   const savePost = async (content: string) => {
-    if (!openPost || !project.name) return;
+    if (!openPost || !project.folder_name) return;
 
     try {
       await invoke('update_post', {
-        projectName: project.name,
+        projectName: project.folder_name,
         slug: openPost.slug,
         content,
       });
@@ -112,16 +120,16 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
   };
 
   const deletePost = async () => {
-    console.log('deletePost called, openPost:', openPost, 'project.name:', project.name);
-    if (!openPost || !project.name) {
-      console.error('Missing openPost or project.name');
+    console.log('deletePost called, openPost:', openPost, 'project folder_name:', project.folder_name);
+    if (!openPost || !project.folder_name) {
+      console.error('Missing openPost or project folder_name');
       return;
     }
 
     try {
-      console.log('Deleting post:', openPost.slug, 'from project:', project.name);
+      console.log('Deleting post:', openPost.slug, 'from project:', project.folder_name);
       await invoke('delete_post', {
-        projectName: project.name,
+        projectName: project.folder_name,
         slug: openPost.slug,
       });
       console.log('Post deleted successfully');
@@ -135,11 +143,11 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
   };
 
   const selectPost = async (post: Post) => {
-    if (!project.name) return;
+    if (!project.folder_name) return;
 
     try {
       const fullPost = await invoke<Post>('read_post', {
-        projectName: project.name,
+        projectName: project.folder_name,
         slug: post.slug,
       });
       setOpenPost(fullPost);
@@ -148,8 +156,59 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
     }
   };
 
-  const handleDeleteProject = () => {
-    onDeleteProject(project.id);
+  const startEditingTitle = () => {
+    setIsEditingTitle(true);
+    setEditedTitle(project.label);
+  };
+
+  const cancelEditingTitle = () => {
+    setIsEditingTitle(false);
+    setEditedTitle(project.label);
+  };
+
+  const saveTitle = async () => {
+    if (!currentProjectName || editedTitle.trim() === '') return;
+
+    const newDisplayName = editedTitle.trim();
+
+    try {
+      // Call backend to rename the project (passing folder_name and new display name)
+      const updatedProjectFromBackend = await invoke<{ name: string; folder_name: string; path: string }>(
+        'rename_project',
+        {
+          oldFolderName: project.folder_name,
+          newDisplayName: newDisplayName,
+        }
+      );
+
+      // Update the project locally with the complete information from backend
+      const updatedProject = {
+        ...project,
+        label: updatedProjectFromBackend.name,
+        name: updatedProjectFromBackend.name,
+        folder_name: updatedProjectFromBackend.folder_name,
+        path: updatedProjectFromBackend.path,
+      };
+
+      // Update local state first
+      setCurrentProjectName(updatedProjectFromBackend.name);
+
+      // Notify parent component of the change
+      if (onUpdateProject) {
+        onUpdateProject(updatedProject);
+      }
+
+      // Reload posts with the updated project information
+      await loadPosts();
+
+      setIsEditingTitle(false);
+      console.log(`✅ Project renamed to: ${newDisplayName} (folder: ${updatedProjectFromBackend.folder_name})`);
+    } catch (error) {
+      console.error('Failed to rename project:', error);
+      alert(`❌ Failed to rename project: ${error}`);
+      // Revert on error
+      setEditedTitle(project.label);
+    }
   };
 
   return (
@@ -193,36 +252,30 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
             <span className="text-white">Back</span>
           </button>
 
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold">{project.label}</h2>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-800 hover:bg-neutral-700 transition-colors"
-              aria-label="Project settings"
-            >
-              <div className="text-white">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="4" y1="21" x2="4" y2="14"></line>
-                  <line x1="4" y1="10" x2="4" y2="3"></line>
-                  <line x1="12" y1="21" x2="12" y2="12"></line>
-                  <line x1="12" y1="8" x2="12" y2="3"></line>
-                  <line x1="20" y1="21" x2="20" y2="16"></line>
-                  <line x1="20" y1="12" x2="20" y2="3"></line>
-                  <line x1="1" y1="14" x2="7" y2="14"></line>
-                  <line x1="9" y1="8" x2="15" y2="8"></line>
-                  <line x1="17" y1="16" x2="23" y2="16"></line>
-                </svg>
-              </div>
-            </button>
+          <div className="flex items-center gap-3 relative">
+            {isEditingTitle ? (
+              <input
+                type="text"
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                className="text-xl text-center font-semibold bg-neutral-800 text-white border border-neutral-600 rounded px-2 py-1 focus:border-blue-500 focus:outline-none"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveTitle();
+                  if (e.key === 'Escape') cancelEditingTitle();
+                }}
+                onBlur={cancelEditingTitle}
+                placeholder="Enter project name"
+              />
+            ) : (
+              <h2
+                className="text-xl font-semibold cursor-pointer hover:text-blue-400 transition-colors"
+                onClick={startEditingTitle}
+                title="Click to edit project name"
+              >
+                {project.label}
+              </h2>
+            )}
           </div>
 
           <button
@@ -277,16 +330,6 @@ export default function ProjectEditor({ project, onClose, initialPosition, onDel
           </div>
         )}
       </div>
-
-      <AnimatePresence>
-        {showSettings && (
-          <ProjectSettingsModal
-            project={project}
-            onClose={() => setShowSettings(false)}
-            onDelete={handleDeleteProject}
-          />
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }

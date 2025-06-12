@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FolderPlus, Eye } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 // Import our extracted components and utilities
-import { Project, Post } from './types';
+import { Project } from './types';
 import { polar } from './utils';
 import ProjectCard from './components/ProjectCard';
 import RadialMenu from './components/RadialMenu';
@@ -44,7 +44,7 @@ export default function StudioDashboard() {
   // Load projects from file system
   const loadProjects = async () => {
     try {
-      const projectList = await invoke<Array<{ name: string; path: string }>>('list_projects');
+      const projectList = await invoke<Array<{ name: string; folder_name: string; path: string }>>('list_projects');
 
       // Convert file system projects to UI projects with positions
       const uiProjects: Project[] = projectList.map((proj, idx) => {
@@ -52,9 +52,10 @@ export default function StudioDashboard() {
         const { x, y } = polar(radius, (360 / projectList.length) * idx);
 
         return {
-          id: proj.name,
-          label: proj.name,
-          name: proj.name,
+          id: proj.folder_name, // Use folder_name as unique ID
+          label: proj.name, // Display name
+          name: proj.name, // Display name
+          folder_name: proj.folder_name, // Actual folder name
           path: proj.path,
           x,
           y,
@@ -92,7 +93,7 @@ export default function StudioDashboard() {
     console.log('Creating project with name:', name);
 
     try {
-      const newProject = await invoke<{ name: string; path: string }>('create_project', { name });
+      const newProject = await invoke<{ name: string; folder_name: string; path: string }>('create_project', { name });
       console.log('Project created successfully:', newProject);
 
       // Reload projects to update the UI
@@ -138,6 +139,15 @@ export default function StudioDashboard() {
 
   const handleOpenProject = (project: Project, position?: { x: number; y: number }) => {
     setOpenProj({ project, position });
+  };
+
+  const handleUpdateProject = (updatedProject: Project) => {
+    setProjects((prev) => prev.map((p) => (p.id === updatedProject.id ? updatedProject : p)));
+
+    // Update the currently open project if it's the same one
+    if (openProj && openProj.project.id === updatedProject.id) {
+      setOpenProj({ ...openProj, project: updatedProject });
+    }
   };
 
   const actions = [
@@ -189,6 +199,7 @@ export default function StudioDashboard() {
                 setProjects((prev) => prev.filter((p) => p.id !== id));
                 setOpenProj(null);
               }}
+              onUpdateProject={handleUpdateProject}
             />
           </motion.div>
         )}

@@ -7,14 +7,15 @@ export interface Post {
 
 export interface Project {
   id: string;
-  label: string;
+  label: string; // Display name (what user sees)
   x: number;
   y: number;
   posts: Post[];
   description?: string;
   intention?: string;
   postRecipe?: string[];
-  // Add fields from Rust struct
-  name?: string;
-  path?: string;
+  // Fields from Rust struct
+  name: string; // Display name (matches Rust backend)
+  folder_name: string; // Actual folder name (sanitized)
+  path: string;
 }

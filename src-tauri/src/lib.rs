@@ -5,7 +5,8 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Project {
-    name: String,
+    name: String,      // Display name (what user sees)
+    folder_name: String, // Actual folder name (sanitized)
     path: String,
 }
 
@@ -138,9 +139,14 @@ async fn list_projects() -> Result<Vec<Project>, String> {
                 if let Ok(entry) = entry {
                     let path = entry.path();
                     if path.is_dir() {
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if let Some(folder_name) = path.file_name().and_then(|n| n.to_str()) {
+                            // Try to read display name from index.astro frontmatter
+                            let display_name = read_project_display_name(&path)
+                                .unwrap_or_else(|| folder_name.to_string());
+
                             projects.push(Project {
-                                name: name.to_string(),
+                                name: display_name,
+                                folder_name: folder_name.to_string(),
                                 path: path.to_string_lossy().to_string(),
                             });
                         }
@@ -207,12 +213,16 @@ const projectName = '{}';
     // Create an index.astro file for the project listing
     let index_content = format!(
         r#"---
+title: "{}"
+displayName: "{}"
 import ProjectLayout from '../../layouts/ProjectLayout.astro';
 import {{ readdir }} from 'node:fs/promises';
 import path from 'node:path';
 
 const projectName = '{}';
-const projectDir = path.join(process.cwd(), 'src/pages', projectName);
+const displayName = '{}';
+const folderName = '{}';
+const projectDir = path.join(process.cwd(), 'src/pages', folderName);
 
 // Get all markdown posts
 let posts = [];
@@ -225,7 +235,7 @@ try {{
       return {{
         slug,
         title: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        href: `/${{projectName}}/${{slug}}`
+        href: `/${{folderName}}/${{slug}}`
       }};
     }});
 }} catch (error) {{
@@ -233,7 +243,7 @@ try {{
 }}
 ---
 
-<ProjectLayout title="{{projectName.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}}" projectName={{projectName}}>
+<ProjectLayout title={{displayName}} projectName={{projectName}}>
   <h2>Posts</h2>
 
   {{posts.length > 0 ? (
@@ -252,7 +262,11 @@ try {{
   )}}
 </ProjectLayout>
 "#,
-        sanitized_name
+        name, // original display name for title
+        name, // original display name for displayName
+        name, // original display name for projectName (what user sees)
+        name, // original display name for displayName variable
+        sanitized_name // sanitized folder name for file system operations
     );
 
     let index_path = project_path.join("index.astro");
@@ -261,7 +275,8 @@ try {{
     }
 
     Ok(Project {
-        name: sanitized_name.clone(),
+        name: name.clone(), // Original display name
+        folder_name: sanitized_name.clone(),
         path: project_path.to_string_lossy().to_string(),
     })
 }
@@ -466,7 +481,183 @@ async fn delete_post(project_name: String, slug: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn rename_project(old_folder_name: String, new_display_name: String) -> Result<Project, String> {
+    // Sanitize the new project name for folder
+    let sanitized_new_name = sanitize_project_name(&new_display_name);
+
+    if sanitized_new_name.is_empty() {
+        return Err("Project name cannot be empty after sanitization".to_string());
+    }
+
+    let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
+    let pages_path = documents_dir.join("studio").join("src").join("pages");
+    
+    let old_project_path = pages_path.join(&old_folder_name);
+    let new_project_path = pages_path.join(&sanitized_new_name);
+
+    // Check if old project exists
+    if !old_project_path.exists() {
+        return Err(format!("Project folder '{}' does not exist", old_folder_name));
+    }
+
+    // Check if new project name already exists (only if folder name is changing)
+    if old_folder_name != sanitized_new_name && new_project_path.exists() {
+        return Err(format!("Project folder '{}' already exists", sanitized_new_name));
+    }
+
+    // Update the index.astro file with new display name
+    let index_file_path = old_project_path.join("index.astro");
+    if index_file_path.exists() {
+        update_project_display_name(&index_file_path, &new_display_name, &sanitized_new_name)?;
+    }
+
+    // Rename the directory if the folder name changed
+    if old_folder_name != sanitized_new_name {
+        fs::rename(&old_project_path, &new_project_path)
+            .map_err(|e| format!("Failed to rename project directory: {}", e))?;
+
+        // Update the layout file to reference the new folder name
+        let layout_file_path = new_project_path.join("_layout.astro");
+        if layout_file_path.exists() {
+            let layout_content = fs::read_to_string(&layout_file_path)
+                .map_err(|e| format!("Failed to read layout file: {}", e))?;
+
+            let updated_content = layout_content.replace(
+                &format!("const projectName = '{}';", old_folder_name),
+                &format!("const projectName = '{}';", sanitized_new_name),
+            );
+
+            fs::write(&layout_file_path, updated_content)
+                .map_err(|e| format!("Failed to update layout file: {}", e))?;
+        }
+    }
+
+    // Return the updated project information
+    let final_folder_name = sanitized_new_name;
+    let final_project_path = pages_path.join(&final_folder_name);
+    
+    Ok(Project {
+        name: new_display_name,
+        folder_name: final_folder_name,
+        path: final_project_path.to_string_lossy().to_string(),
+    })
+}
+
 // Helper functions
+fn update_project_display_name(
+    index_path: &std::path::Path,
+    new_display_name: &str,
+    new_folder_name: &str,
+) -> Result<(), String> {
+    let content = fs::read_to_string(index_path)
+        .map_err(|e| format!("Failed to read index file: {}", e))?;
+
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let mut in_frontmatter = false;
+    let mut frontmatter_end = 0;
+
+    // Find frontmatter boundaries
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 && line.trim() == "---" {
+            in_frontmatter = true;
+            continue;
+        }
+        if in_frontmatter && line.trim() == "---" {
+            frontmatter_end = i;
+            break;
+        }
+    }
+
+    if frontmatter_end == 0 {
+        return Err("No frontmatter found in index.astro".to_string());
+    }
+
+    // Update frontmatter fields
+    let mut found_title = false;
+    let mut found_display_name = false;
+
+    for i in 1..frontmatter_end {
+        let line = &lines[i];
+        if line.trim().starts_with("title:") {
+            lines[i] = format!("title: \"{}\"", new_display_name);
+            found_title = true;
+        } else if line.trim().starts_with("displayName:") {
+            lines[i] = format!("displayName: \"{}\"", new_display_name);
+            found_display_name = true;
+        } else if line.trim().starts_with("const projectName =") {
+            lines[i] = format!("const projectName = '{}';", new_display_name);
+        } else if line.trim().starts_with("const displayName =") {
+            lines[i] = format!("const displayName = '{}';", new_display_name);
+        } else if line.trim().starts_with("const folderName =") {
+            lines[i] = format!("const folderName = '{}';", new_folder_name);
+        }
+    }
+
+    // Add missing frontmatter fields if needed
+    if !found_title {
+        lines.insert(1, format!("title: \"{}\"", new_display_name));
+        frontmatter_end += 1;
+    }
+    if !found_display_name {
+        let insert_pos = if found_title { 2 } else { 1 };
+        lines.insert(insert_pos, format!("displayName: \"{}\"", new_display_name));
+    }
+
+    let updated_content = lines.join("\n");
+    fs::write(index_path, updated_content)
+        .map_err(|e| format!("Failed to update index file: {}", e))?;
+
+    Ok(())
+}
+
+fn read_project_display_name(project_path: &std::path::Path) -> Option<String> {
+    let index_path = project_path.join("index.astro");
+    if !index_path.exists() {
+        return None;
+    }
+
+    if let Ok(content) = fs::read_to_string(&index_path) {
+        // Extract displayName from frontmatter
+        if content.starts_with("---") {
+            let lines: Vec<&str> = content.lines().collect();
+            let mut in_frontmatter = false;
+            let mut frontmatter_end = 0;
+
+            for (i, line) in lines.iter().enumerate() {
+                if i == 0 && line.trim() == "---" {
+                    in_frontmatter = true;
+                    continue;
+                }
+                if in_frontmatter && line.trim() == "---" {
+                    frontmatter_end = i;
+                    break;
+                }
+            }
+
+            if frontmatter_end > 0 {
+                for i in 1..frontmatter_end {
+                    let line = lines[i].trim();
+                    if line.starts_with("displayName:") {
+                        let display_name_part = &line[12..].trim();
+                        // Remove quotes if present
+                        let display_name = if (display_name_part.starts_with('"') && display_name_part.ends_with('"'))
+                            || (display_name_part.starts_with('\'') && display_name_part.ends_with('\''))
+                        {
+                            &display_name_part[1..display_name_part.len() - 1]
+                        } else {
+                            display_name_part
+                        };
+                        return Some(display_name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn extract_title_from_markdown(content: &str, fallback_slug: &str) -> String {
     // First try to extract title from frontmatter
     if let Some(frontmatter_title) = extract_frontmatter_title(content) {
@@ -584,7 +775,8 @@ pub fn run() {
             create_post,
             read_post,
             update_post,
-            delete_post
+            delete_post,
+            rename_project
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
