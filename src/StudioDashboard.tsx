@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 // Import our extracted components and utilities
 import { Project } from './types';
 import { polar } from './utils';
+import { useProjectStore } from './store/projectStore';
 import ProjectCard from './components/ProjectCard';
 import RadialMenu from './components/RadialMenu';
 import ProjectEditor from './components/ProjectEditor';
@@ -21,6 +22,9 @@ export default function StudioDashboard() {
   const [openProj, setOpenProj] = useState<{ project: Project; position?: { x: number; y: number } } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Zustand store for persisting project positions
+  const { setProjectPosition, getProjectPosition } = useProjectStore();
 
   // First launch handler - sets up studio workspace
   const initializeStudio = async () => {
@@ -48,8 +52,21 @@ export default function StudioDashboard() {
 
       // Convert file system projects to UI projects with positions
       const uiProjects: Project[] = projectList.map((proj, idx) => {
-        const radius = 160;
-        const { x, y } = polar(radius, (360 / projectList.length) * idx);
+        // Try to get stored position first, fallback to circular layout
+        const storedPosition = getProjectPosition(proj.folder_name);
+        let x, y;
+
+        if (storedPosition) {
+          x = storedPosition.x;
+          y = storedPosition.y;
+        } else {
+          // Default circular layout for new projects
+          const radius = 200;
+          const angle = (360 / projectList.length) * idx;
+          const polarCoords = polar(radius, angle);
+          x = polarCoords.x;
+          y = polarCoords.y;
+        }
 
         return {
           id: proj.folder_name, // Use folder_name as unique ID
@@ -134,7 +151,10 @@ export default function StudioDashboard() {
   };
 
   const updatePos = (id: string, x: number, y: number) => {
+    // Update local state
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, x, y } : p)));
+    // Persist position to Zustand store
+    setProjectPosition(id, x, y);
   };
 
   const handleOpenProject = (project: Project, position?: { x: number; y: number }) => {
@@ -157,7 +177,7 @@ export default function StudioDashboard() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center text-neutral-50 selection:bg-neutral-700">
-      <div ref={containerRef} className="relative h-[28rem] w-[28rem] select-none">
+      <div ref={containerRef} className="relative h-screen w-screen select-none">
         <div className="absolute top-1/2 left-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/5 shadow-inner backdrop-blur-sm pointer-events-none">
           <motion.span layoutId="avatar" className="text-sm opacity-60">
             ✶ Studio
