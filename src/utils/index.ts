@@ -6,46 +6,92 @@ export const polar = (r: number, angleDeg: number) => {
   };
 };
 
+import { marked } from 'marked';
+
 export function parseMarkdown(markdown: string): string {
   if (!markdown) return '';
 
-  let html = markdown
-    // Headers
-    .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold mb-3 mt-6">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mb-4 mt-6">$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4 mt-6">$1</h1>')
+  try {
+    // Remove frontmatter if present
+    let content = markdown;
+    if (content.startsWith('---')) {
+      const frontmatterEnd = content.indexOf('\n---\n', 4);
+      if (frontmatterEnd !== -1) {
+        content = content.substring(frontmatterEnd + 5);
+      }
+    }
 
-    // Bold and Italic
-    .replace(/\*\*(.*)\**/gim, '<strong class="font-semibold">$1</strong>')
-    .replace(/\*(.*)\*/gim, '<em class="italic">$1</em>')
+    // Configure marked with GitHub Flavored Markdown
+    marked.setOptions({
+      gfm: true,
+      breaks: true,
+    });
 
-    // Code blocks
-    .replace(
-      /```([\s\S]*?)```/gim,
-      '<pre class="bg-neutral-100 p-3 rounded text-sm font-mono my-4 overflow-x-auto"><code>$1</code></pre>'
-    )
+    // Parse markdown to HTML
+    let html = marked(content) as string;
 
-    // Inline code
-    .replace(/`([^`]*)`/gim, '<code class="bg-neutral-100 px-1 py-0.5 rounded text-sm font-mono">$1</code>')
+    // Post-process the HTML to add Tailwind classes
+    html = html
+      // Headings
+      .replace(/<h1>/g, '<h1 class="text-3xl font-bold mb-6 mt-8 text-neutral-900 border-b border-neutral-200 pb-2">')
+      .replace(/<h2>/g, '<h2 class="text-2xl font-semibold mb-4 mt-6 text-neutral-800">')
+      .replace(/<h3>/g, '<h3 class="text-xl font-semibold mb-3 mt-5 text-neutral-800">')
+      .replace(/<h4>/g, '<h4 class="text-lg font-medium mb-2 mt-4 text-neutral-700">')
+      .replace(/<h5>/g, '<h5 class="text-base font-medium mb-2 mt-3 text-neutral-700">')
+      .replace(/<h6>/g, '<h6 class="text-sm font-medium mb-2 mt-3 text-neutral-600">')
 
-    // Quotes
-    .replace(
-      /^> (.*$)/gim,
-      '<blockquote class="border-l-4 border-neutral-300 pl-4 py-2 my-4 italic text-neutral-600">$1</blockquote>'
-    )
+      // Paragraphs
+      .replace(/<p>/g, '<p class="mb-4 text-neutral-700 leading-relaxed">')
 
-    // Lists
-    .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
+      // Lists
+      .replace(/<ul>/g, '<ul class="list-disc list-inside mb-4 space-y-1 text-neutral-700 ml-4">')
+      .replace(/<ol>/g, '<ol class="list-decimal list-inside mb-4 space-y-1 text-neutral-700 ml-4">')
+      .replace(/<li>/g, '<li class="mb-1">')
 
-    // Line breaks
-    .replace(/\n\n/gim, '</p><p class="mb-4">')
-    .replace(/\n/gim, '<br>');
+      // Blockquotes
+      .replace(
+        /<blockquote>/g,
+        '<blockquote class="border-l-4 border-blue-200 bg-blue-50 pl-4 py-3 my-4 italic text-neutral-600 rounded-r">'
+      )
 
-  // Wrap in paragraphs
-  html = '<p class="mb-4">' + html + '</p>';
+      // Code blocks
+      .replace(
+        /<pre><code>/g,
+        '<pre class="bg-neutral-900 text-neutral-100 p-4 rounded-lg my-4 overflow-x-auto"><code class="text-sm font-mono">'
+      )
 
-  // Clean up empty paragraphs
-  html = html.replace(/<p class="mb-4"><\/p>/gim, '');
+      // Inline code
+      .replace(/<code>/g, '<code class="bg-neutral-100 text-neutral-800 px-2 py-1 rounded text-sm font-mono">')
 
-  return html;
+      // Links
+      .replace(/<a href="/g, '<a href="')
+      .replace(
+        /<a /g,
+        '<a class="text-blue-600 hover:text-blue-800 underline decoration-blue-300 hover:decoration-blue-500 transition-colors" '
+      )
+
+      // Strong and emphasis
+      .replace(/<strong>/g, '<strong class="font-semibold text-neutral-900">')
+      .replace(/<em>/g, '<em class="italic text-neutral-700">')
+
+      // Horizontal rules
+      .replace(/<hr>/g, '<hr class="my-8 border-neutral-300">')
+
+      // Tables
+      .replace(
+        /<table>/g,
+        '<div class="overflow-x-auto my-6"><table class="min-w-full border border-neutral-200 rounded-lg">'
+      )
+      .replace(/<\/table>/g, '</table></div>')
+      .replace(/<thead>/g, '<thead class="bg-neutral-50">')
+      .replace(/<tbody>/g, '<tbody class="bg-white">')
+      .replace(/<tr>/g, '<tr class="border-b border-neutral-200">')
+      .replace(/<th>/g, '<th class="px-4 py-2 font-medium text-neutral-900 text-left">')
+      .replace(/<td>/g, '<td class="px-4 py-2 text-neutral-700">');
+
+    return html;
+  } catch (error) {
+    console.error('Error parsing markdown:', error);
+    return `<p class="text-red-500">Error parsing markdown content</p>`;
+  }
 }
